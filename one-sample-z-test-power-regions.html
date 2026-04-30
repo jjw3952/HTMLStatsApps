@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One-Sample z-test Power Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; color: #212529; }
+        .container { display: flex; flex-wrap: wrap; max-width: 1400px; margin: 20px auto; gap: 20px; }
+        .sidebar { flex: 1; min-width: 300px; padding: 20px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .main { flex: 3; min-width: 600px; display: flex; flex-direction: column; gap: 0px;}
+        .plot-container { padding: 20px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .input-group { margin-bottom: 15px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 0.9em; color: #495057; }
+        input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px; }
+        h3 { color: #0072B2; margin-top: 0; }
+        h3.author { font-weight: 400; line-height: 25%; color: #0072B2; font-size: 100%; margin-top: -10px; margin-bottom: 30px; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 1em; font-size: 1.1em; }
+        .table th, .table td { border: 1px solid #dee2e6; padding: 8px; text-align: center; }
+        .table th { background-color: #f2f2f2; }
+        .footer { padding: 20px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h3>Statistical Power for<br>One-Sample z-test</h3>
+        <h3 class="author">Created by Jake Warren</h3>
+
+        <div class="input-group">
+            <label for="conf">Confidence</label>
+            <input type="number" id="conf" value="0.80" min="0" max="1" step="0.01">
+        </div>
+        <div class="input-group">
+            <label for="side">Sides</label>
+            <select id="side">
+                <option value="1-sided Upper">1-sided Upper</option>
+                <option value="1-sided Lower">1-sided Lower</option>
+                <option value="2-sided">2-sided</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label for="effectsize">Effect Size</label>
+            <input type="number" id="effectsize" value="2" min="0" step="0.1">
+        </div>
+        <div class="input-group">
+            <label for="sd">Standard Deviation</label>
+            <input type="number" id="sd" value="6" min="0.01" step="0.1">
+        </div>
+        <div class="input-group">
+            <label for="samplesize">Sample Size</label>
+            <input type="number" id="samplesize" value="30" min="1" step="1">
+        </div>
+        <div class="input-group">
+            <label for="hide">Hide Distributions</label>
+            <select id="hide">
+                <option value="None">None</option>
+                <option value="H0">H₀</option>
+                <option value="H1">H₁</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label for="showZones">Show Wald Zones</label>
+            <select id="showZones">
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="plot-container">
+            <canvas id="powerCurvePlot"></canvas>
+        </div>
+        <div class="plot-container">
+            <canvas id="distributionsPlot"></canvas>
+        </div>
+         <div class="footer">
+            <h3>Key Concepts</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th colspan="2">Decision</th>
+                </tr>
+                <tr>
+                  <th>Reality</th>
+                  <th>Reject H<sub>0</sub></th>
+                  <th>Fail to Reject H<sub>0</sub></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>H<sub>0</sub> is True</strong></td>
+                  <td style="background-color: #F8D7DA;">Type I Error (α)</td>
+                  <td style="background-color: #D4EDDA;">Correct Decision (Confidence = 1-α)</td>
+                </tr>
+                <tr>
+                  <td><strong>H<sub>0</sub> is False</strong></td>
+                  <td style="background-color: #D4EDDA;">Correct Decision (Power = 1-β)</td>
+                  <td style="background-color: #D3D3D3;">Type II Error (β)</td>
+                </tr>
+              </tbody>
+            </table>
+            <br>
+            <h4>Confidence Level</h4>
+            <p>The probability that if the null hypothesis is true, we will correctly fail to reject it. It is equal to 1 - α (alpha). A 95% confidence level means there is a 5% chance of making a Type I error.</p>
+            <h4>Power</h4>
+            <p>The probability that if the alternative hypothesis is true, we will correctly reject the null hypothesis. It is equal to 1 - β (beta). This is the probability of detecting an effect if there is one.</p>
+            <h4>Type I Error (α, alpha)</h4>
+            <p>The error of rejecting a null hypothesis when it is actually true. This is a 'false positive'. The probability of a Type I error is denoted by alpha (α), which is the significance level of the test.</p>
+            <h4>Type II Error (β, beta)</h4>
+            <p>The error of failing to reject a null hypothesis when it is actually false. This is a 'false negative'. The probability of a Type II error is denoted by beta (β). Power is the complement of this (Power = 1 - β).</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    Chart.register(window['chartjs-plugin-annotation']);
+
+    const allInputs = document.querySelectorAll('#conf, #side, #effectsize, #sd, #samplesize, #hide, #showZones');
+    const ctxPower = document.getElementById('powerCurvePlot').getContext('2d');
+    const ctxDist = document.getElementById('distributionsPlot').getContext('2d');
+
+    let powerCurveChart, distributionsChart;
+
+    function updateApp() {
+        const conf = parseFloat(document.getElementById('conf').value);
+        const side = document.getElementById('side').value;
+        const effectSize = parseFloat(document.getElementById('effectsize').value);
+        const sd = parseFloat(document.getElementById('sd').value);
+        const sampleSize = parseInt(document.getElementById('samplesize').value);
+        const hide = document.getElementById('hide').value;
+        const showZones = document.getElementById('showZones').value;
+        const alpha = 1 - conf;
+
+        if (isNaN(conf) || isNaN(effectSize) || isNaN(sd) || isNaN(sampleSize) || sd <= 0 || sampleSize < 1) {
+            return;
+        }
+
+        const stdError = sd / Math.sqrt(sampleSize);
+        const z1 = (stdError === 0) ? 0 : effectSize / stdError;
+
+        let h1_mean;
+        if (side === "1-sided Lower") {
+            h1_mean = -z1;
+        } else {
+            h1_mean = z1;
+        }
+
+        const plot_range = Math.max(4, Math.abs(h1_mean) + 3);
+        const xlim_min = Math.min(-plot_range, h1_mean - plot_range);
+        const xlim_max = Math.max(plot_range, h1_mean + plot_range);
+        const xlim = [xlim_min, xlim_max];
+
+        updatePowerCurvePlot({ h1_mean, conf, alpha, side, xlim, showZones });
+        updateDistributionsPlot({ h1_mean, conf, alpha, side, xlim, hide });
+    }
+
+    function updatePowerCurvePlot(p) {
+        const z_alt_seq = Array.from({ length: 401 }, (_, i) => p.xlim[0] + (p.xlim[1] - p.xlim[0]) * i / 400);
+        
+        let power_values;
+        let zcrit_upper, zcrit_lower;
+
+        switch (p.side) {
+            case "1-sided Upper":
+                zcrit_upper = jStat.normal.inv(p.conf, 0 , 1);
+                power_values = z_alt_seq.map(z => 1 - jStat.normal.cdf(zcrit_upper - z, 0, 1));
+                break;
+            case "1-sided Lower":
+                zcrit_lower = jStat.normal.inv(1 - p.conf, 0, 1);
+                power_values = z_alt_seq.map(z => jStat.normal.cdf(zcrit_lower - z, 0, 1));
+                break;
+            case "2-sided":
+                zcrit_lower = jStat.normal.inv(p.alpha / 2, 0, 1);
+                zcrit_upper = jStat.normal.inv(1 - p.alpha / 2, 0, 1);
+                power_values = z_alt_seq.map(z => jStat.normal.cdf(z, zcrit_upper, 1) + jStat.normal.cdf(zcrit_lower - z, 0, 1));
+                break;
+        }
+
+        const current_power = power_values[z_alt_seq.findIndex(z => z >= p.h1_mean)];
+
+        let annotations = {
+            alphaPoint: { type: 'point', xValue: 0, yValue: p.alpha, backgroundColor: 'red', radius: 5 },
+            alphaLabel: { type: 'label', xValue: 0, yValue: p.alpha, content: 'α', position: {x: 'center', y: 'end'} , color: 'red'},
+            powerPoint: { type: 'point', xValue: p.h1_mean, yValue: current_power, backgroundColor: 'blue', radius: 5 },
+            powerLabel: { type: 'label', xValue: p.h1_mean, yValue: current_power+.02, content: '1-β', position: 'start', color: 'blue' },
+            powerLineX: { type: 'line', xMin: p.xlim[0], xMax: p.h1_mean, yMin: current_power, yMax: current_power, borderColor: 'blue', borderDash: [6, 6] },
+            powerLineY: { type: 'line', yMin: 0, yMax: current_power, xMin: p.h1_mean, xMax: p.h1_mean, borderColor: 'blue', borderDash: [6, 6] }
+        };
+
+        if (p.showZones === "Yes") {
+            // Zone: Preference for Acceptance (H0)
+if (p.side !== "2-sided") {
+            annotations.zoneAccept = {
+                type: 'box',
+                xMin: p.side === "1-sided Upper" ? p.xlim[0] : (p.side === "1-sided Lower" ? 0 : zcrit_lower),
+                xMax: p.side === "1-sided Upper" ? 0 : (p.side === "1-sided Lower" ? p.xlim[1] : zcrit_upper),
+                backgroundColor: 'rgba(75, 192, 192, 0.15)',
+                borderWidth: 0,
+                drawTime: 'beforeDatasetsDraw'
+            };
+            annotations.labelAccept = {
+                type: 'label', xValue: p.side === "1-sided Lower" ? (p.h1_mean + p.xlim[0])/2 : (p.h1_mean + p.xlim[1])/2, yValue: 0.95, 
+                content: 'Reject H0', color: 'red', font: { size: 11, style: 'italic' }
+            };
+}
+
+            // Zone: Preference for Rejection (H1)
+            annotations.zoneReject = {
+                type: 'box',
+                xMin: p.side === "1-sided Upper" ? p.h1_mean : (p.side === "1-sided Lower" ? p.xlim[0] : p.h1_mean),
+                xMax: p.side === "1-sided Upper" ? p.xlim[1] : (p.side === "1-sided Lower" ? p.h1_mean : p.xlim[1]),
+                backgroundColor: 'rgba(255, 99, 132, 0.15)',
+                borderWidth: 0,
+                drawTime: 'beforeDatasetsDraw'
+            };
+if (p.side !== "2-sided") {
+            annotations.labelReject = {
+                type: 'label', xValue: p.side === "1-sided Lower" ? (p.xlim[1])/2 : (p.xlim[0])/2, yValue: 0.95, 
+                content: 'Accept H0', color: 'green', font: { size: 11, style: 'italic' }
+            };
+}
+            // Additional box for 2-sided upper rejection
+            if (p.side === "2-sided") {
+                annotations.zoneRejectUpper = {
+                    type: 'box', xMin: p.xlim[0], xMax: -p.h1_mean, 
+                    backgroundColor: 'rgba(255, 99, 132, 0.15)', borderWidth: 0, drawTime: 'beforeDatasetsDraw'
+                };
+            annotations.labelRejectLower = {
+                type: 'label', xValue: (p.xlim[0] - p.h1_mean)/2, yValue: 0.95, 
+                content: 'Reject H0', color: 'red', font: { size: 11, style: 'italic' }
+            };
+            annotations.labelRejectUpper = {
+                type: 'label', xValue: (p.xlim[1] + p.h1_mean)/2, yValue: 0.95, 
+                content: 'Reject H0', color: 'red', font: { size: 11, style: 'italic' }
+            };
+            }
+
+            // Zone: Indifference
+            //if (p.side !== "2-sided") {
+                annotations.zoneIndiff = {
+                    type: 'box',
+                    xMin: p.side === "1-sided Upper" ? 0 : (p.side === "1-sided Lower" ? p.h1_mean : -p.h1_mean),
+                    xMax: p.side === "1-sided Upper" ? p.h1_mean : (p.side === "1-sided Lower" ? 0 : p.h1_mean),
+                    backgroundColor: 'rgba(255, 205, 86, 0.2)',
+                    borderWidth: 0,
+                    drawTime: 'beforeDatasetsDraw'
+                };
+                annotations.labelIndiff = {
+                    type: 'label', xValue: p.side === "1-sided Upper" ? p.h1_mean/2 : (p.side === "1-sided Lower" ? p.h1_mean/2 : 0), 
+                    yValue: 0.5, content: 'Indifference', rotation: -90, color: 'orange'
+                };
+            //}
+        }
+
+        if (powerCurveChart) powerCurveChart.destroy();
+        powerCurveChart = new Chart(ctxPower, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'Power Curve',
+                    data: z_alt_seq.map((z, i) => ({ x: z, y: power_values[i] })),
+                    borderColor: 'black',
+                    showLine: true,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                animation: false,
+                scales: {
+                    x: { type: 'linear', title: { display: true, text: 'Test Statistic (t)' }, min: p.xlim[0], max: p.xlim[1] },
+                    y: { type: 'linear', title: { display: true, text: 'Power' }, min: 0, max: 1 }
+                },
+                plugins: {
+                    title: { display: true, text: 'Power Curve' },
+                    legend: { display: false },
+                    annotation: { annotations: annotations }
+                }
+            }
+        });
+    }
+    
+    function updateDistributionsPlot(p) {
+        const x_values = Array.from({ length: 401 }, (_, i) => p.xlim[0] + (p.xlim[1] - p.xlim[0]) * i / 400);
+        const y_h0 = x_values.map(x => jStat.normal.pdf(x, 0, 1));
+        const y_h1 = x_values.map(x => jStat.normal.pdf(x, p.h1_mean, 1));
+        
+        const datasets = [];
+        const ticks = new Set([0]);
+        let power = 0;
+
+        if (p.hide !== 'H0') {
+            datasets.push({ label: 'H₀', data: y_h0, borderColor: 'black', borderWidth: 2, fill: false, pointRadius: 0 });
+        }
+        if (p.hide !== 'H1') {
+            datasets.push({ label: 'H₁', data: y_h1, borderColor: 'blue', borderWidth: 2, borderDash: [6, 6], fill: false, pointRadius: 0 });
+            ticks.add(p.h1_mean);
+        }
+
+        if (p.side === "1-sided Upper") {
+            const zcrit = jStat.normal.inv(p.conf, 0, 1);
+            power = 1 - jStat.normal.cdf(zcrit - p.h1_mean, 0, 1);
+            ticks.add(zcrit);
+            if (p.hide !== 'H0') datasets.push({ label: 'α (Type I Error)', data: getShadedAreaData(x_values, y_h0, x => x >= zcrit), backgroundColor: 'rgba(255, 99, 132, 0.5)', fill: true, pointRadius: 0 });
+            if (p.hide !== 'H1') {
+                datasets.push({ label: 'β (Type II Error)', data: getShadedAreaData(x_values, y_h1, x => x < zcrit), backgroundColor: 'rgba(211, 211, 211, 0.7)', fill: true, pointRadius: 0 });
+                datasets.push({ label: 'Power (1-β)', data: getShadedAreaData(x_values, y_h1, x => x >= zcrit), backgroundColor: 'rgba(144, 238, 144, 0.7)', fill: true, pointRadius: 0 });
+            }
+        } else if (p.side === "1-sided Lower") {
+            const zcrit = jStat.normal.inv(p.alpha, 0, 1);
+            power = jStat.normal.cdf(zcrit - p.h1_mean, 0, 1);
+            ticks.add(zcrit);
+            if (p.hide !== 'H0') datasets.push({ label: 'α (Type I Error)', data: getShadedAreaData(x_values, y_h0, x => x <= zcrit), backgroundColor: 'rgba(255, 99, 132, 0.5)', fill: true, pointRadius: 0 });
+            if (p.hide !== 'H1') {
+                datasets.push({ label: 'β (Type II Error)', data: getShadedAreaData(x_values, y_h1, x => x > zcrit), backgroundColor: 'rgba(211, 211, 211, 0.7)', fill: true, pointRadius: 0 });
+                datasets.push({ label: 'Power (1-β)', data: getShadedAreaData(x_values, y_h1, x => x <= zcrit), backgroundColor: 'rgba(144, 238, 144, 0.7)', fill: true, pointRadius: 0 });
+            }
+        } else {
+            const zcrit_l = jStat.normal.inv(p.alpha / 2, 0, 1);
+            const zcrit_u = jStat.normal.inv(1 - p.alpha / 2, 0, 1);
+            power = jStat.normal.cdf(zcrit_l - p.h1_mean, 0, 1) + (1 - jStat.normal.cdf(zcrit_u - p.h1_mean, 0, 1));
+            ticks.add(zcrit_l); ticks.add(zcrit_u);
+            if (p.hide !== 'H0') {
+                datasets.push({ label: 'α (Type I Error)', data: getShadedAreaData(x_values, y_h0, x => x <= zcrit_l), backgroundColor: 'rgba(255, 99, 132, 0.5)', fill: true, pointRadius: 0 });
+                datasets.push({ label: 'α (Type I Error) Upper', data: getShadedAreaData(x_values, y_h0, x => x >= zcrit_u), backgroundColor: 'rgba(255, 99, 132, 0.5)', fill: true, pointRadius: 0 });
+            }
+            if (p.hide !== 'H1') {
+                datasets.push({ label: 'β (Type II Error)', data: getShadedAreaData(x_values, y_h1, x => x > zcrit_l && x < zcrit_u), backgroundColor: 'rgba(211, 211, 211, 0.7)', fill: true, pointRadius: 0 });
+                datasets.push({ label: 'Power (1-β)', data: getShadedAreaData(x_values, y_h1, x => x <= zcrit_l || x >= zcrit_u), backgroundColor: 'rgba(144, 238, 144, 0.7)', fill: true, pointRadius: 0 });
+            }
+        }
+        
+        if (distributionsChart) distributionsChart.destroy();
+        distributionsChart = new Chart(ctxDist, {
+            type: 'line',
+            data: { labels: x_values.map(x => x.toFixed(2)), datasets: datasets },
+            options: {
+                animation: false,
+                scales: {
+                    xTop: { type: 'linear', position: 'top', min: p.xlim[0], max: p.xlim[1], ticks: { values: Array.from(ticks).sort((a,b)=>a-b), callback: v=>v.toFixed(2) } },
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: { display: true, text: 'Standard Errors between true and hypothesized mean values' },
+                        min: p.xlim[0],
+                        max: p.xlim[1],
+                        offset: false,
+                        grid: { drawOnChartArea: false }, // Keeps the chart clean
+                        afterBuildTicks: axis => {
+                            // Force Chart.js to include your specific values in the tick calculation
+                            const milestones = [0, p.h1_mean];
+                                if (p.side === "2-sided") {
+                                    milestones.push(jStat.normal.inv(p.alpha / 2, 0, 1));
+                                    milestones.push(jStat.normal.inv(1 - p.alpha / 2, 0, 1));
+                                } else {
+                                    const zcrit = (p.side === "1-sided Upper") ? 
+                                                   jStat.normal.inv(p.conf, 0, 1) : 
+                                                           jStat.normal.inv(p.alpha, 0, 1);
+                                    milestones.push(zcrit);
+                                }
+                                axis.ticks = milestones.map(v => ({ value: v }));
+                        },
+                        ticks: {
+                            // This function tells Chart.js what color to use for each label
+                            color: function(context) {
+                                const value = context.tick.value;
+                                const isH0 = Math.abs(value - 0) < 0.01;
+                                const isH1 = Math.abs(value - p.h1_mean) < 0.01;
+                                
+                                if (isH0) return 'black'; // H0 label color
+                                if (isH1) return 'blue';  // H1 label color (matching the H1 dashed line)
+                                return 'red';             // Critical value color
+                            },
+                            callback: function(value) {
+                                // Label the milestones specifically
+                                if (value === 0) return '0';
+                                if (Math.abs(value - p.h1_mean) < 0.01) return `${value.toFixed(2)}`;
+                                return ['', value.toFixed(2)];
+                            }
+                        }
+                    },
+                    y: { beginAtZero: true }
+                },
+                plugins: { title: { display: true, text: `Distributions (Power = ${power.toFixed(3)})` }, legend: { labels: { filter: item => ['H₀', 'H₁', 'α (Type I Error)', 'β (Type II Error)', 'Power (1-β)'].includes(item.text) } } }
+            }
+        });
+    }
+
+    function getShadedAreaData(xVals, yVals, condition) {
+        return xVals.map((x, i) => condition(x) ? yVals[i] : null);
+    }
+    
+    allInputs.forEach(input => input.addEventListener('input', updateApp));
+    document.addEventListener('DOMContentLoaded', updateApp);
+</script>
+</body>
+</html>

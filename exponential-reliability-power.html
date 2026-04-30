@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exponential Reliability Test Planner</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; color: #212529; }
+        .container { display: flex; flex-wrap: wrap; max-width: 1500px; margin: 20px auto; gap: 20px; padding: 0 20px; }
+        .sidebar { flex: 1; min-width: 350px; padding: 20px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: fit-content; }
+        .main { flex: 3; min-width: 600px; display: flex; flex-direction: column; gap: 20px;}
+        .card { padding: 20px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .input-group { margin-bottom: 15px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 0.9em; color: #495057; }
+        input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px; }
+        button { width: 100%; padding: 10px; background-color: #0072B2; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1em; }
+        button:hover { background-color: #005f8c; }
+        h3 { color: #0072B2; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        h3.author { font-weight: 400; line-height: 25%; color: #0072B2; font-size: 100%; margin-top: -10px; margin-bottom: 30px; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 1em; font-size: 0.9em; }
+        .table th, .table td { border: 1px solid #dee2e6; padding: 8px; text-align: center; }
+        .table th { background-color: #f2f2f2; }
+        .table tbody tr.selected { background-color: #e7f3ff; }
+        .hidden { display: none; }
+        .chk-cell { width: 30px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h3>Exponential Reliability<br>Test Planner</h3>
+        <h3 class="author">Created by Jake Warren</h3>
+        
+        <div class="input-group">
+            <label for="alpha">Consumer's Risk (α)</label>
+            <input type="number" id="alpha" value="0.2" step="0.01" min="0.001" max="0.999">
+        </div>
+        <div class="input-group">
+            <label for="beta">Target Producer's Risk (β)</label>
+            <input type="number" id="beta" value="0.2" step="0.01">
+        </div>
+        <div class="input-group">
+            <label for="mtbf0">Null MTBF (H₀)</label>
+            <input type="number" id="mtbf0" value="228" min="1">
+        </div>
+        <div class="input-group">
+            <label for="mtbfa">Alt MTBF (Hₐ)</label>
+            <input type="number" id="mtbfa" value="500" min="1">
+        </div>
+        <div class="input-group">
+            <label for="maxR">Max Allowable Failures (r)</label>
+            <input type="number" id="maxR" value="10" min="0" step="1">
+        </div>
+        <button id="calc1">Generate Table</button>
+    </div>
+
+    <div class="main">
+        <div id="test-plan-card" class="card hidden">
+            <h3>Available Test Plans</h3>
+            <table class="table" id="results_table">
+                <thead><tr><th class="chk-cell">Select</th><th>Allowable Failures (r)</th><th>Duration</th><th>Power (1-β)</th><th>Required True MTBF</br>for Target Power</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="dist-card" class="card hidden">
+            <h3>Distribution of Chi-Square Test Statistic (2T/θ)</h3>
+            <p>(This displays the H₀ and Hₐ test statistic distributions from the last selected test plan.)</p>
+            <canvas id="distPlot"></canvas>
+        </div>
+        
+        <div id="oc-card" class="card hidden">
+            <h3>Power Curves for selected Test Plans</h3>
+            <canvas id="ocCurvePlot"></canvas>
+        </div>
+
+        <div class="footer">
+            <h3>Key Concepts</h3>
+            <table class="table">
+              <thead>
+                <tr><th></th><th colspan="2">Decision</th></tr>
+                <tr><th>Reality</th><th>Reject H<sub>0</sub></th><th>Fail to Reject H<sub>0</sub></th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>H<sub>0</sub> is True</strong></td>
+                  <td style="background-color: #F8D7DA;">Type I Error (α)</td>
+                  <td style="background-color: #D4EDDA;">Correct Decision (Confidence = 1-α)</td>
+                </tr>
+                <tr>
+                  <td><strong>H<sub>0</sub> is False</strong></td>
+                  <td style="background-color: #D4EDDA;">Correct Decision (Power = 1-β)</td>
+                  <td style="background-color: #D3D3D3;">Type II Error (β)</td>
+                </tr>
+              </tbody>
+            </table>
+            <br>
+            <h4>Confidence Level</h4>
+            <p>The probability that if the null hypothesis is true, we will correctly fail to reject it. It is equal to 1 - α (alpha). A 95% confidence level means there is a 5% chance of making a Type I error.</p>
+            <h4>Power</h4>
+            <p>The probability that if the alternative hypothesis is true, we will correctly reject the null hypothesis. It is equal to 1 - β (beta). This is the probability of detecting an effect if there is one.</p>
+            <h4>Type I Error (α, alpha)</h4>
+            <p>The error of rejecting a null hypothesis when it is actually true. This is a 'false positive'. The probability of a Type I error is denoted by alpha (α), which is the significance level of the test.</p>
+            <h4>Type II Error (β, beta)</h4>
+            <p>The error of failing to reject a null hypothesis when it is actually false. This is a 'false negative'. The probability of a Type II error is denoted by beta (β). Power is the complement of this (Power = 1 - β).</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    Chart.register(window['chartjs-plugin-annotation']);
+    let charts = {};
+    let testPlans = [];
+    let selectedIndices = new Set();
+
+    const COLORS = {
+        h0: 'black', //'#0072B2'
+        ha: '#0072B2', //'#D55E00'
+        alpha: 'rgba(255, 99, 132, 0.5)',
+        beta: 'rgba(211, 211, 211, 0.7)',
+        power: 'rgba(144, 238, 144, 0.7)',
+        palette: ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#F0E442', '#56B4E9']
+    };
+
+    function getTestDuration(r, mtbf0, alpha) {
+        const chisq = jStat.chisquare.inv(1 - alpha, 2 * (r + 1));
+        return (mtbf0 * chisq) / 2;
+    }
+
+    function getTestPlans() {
+        const mtbf0 = parseFloat(document.getElementById('mtbf0').value);
+        const mtbfa = parseFloat(document.getElementById('mtbfa').value);
+        const alpha = parseFloat(document.getElementById('alpha').value);
+        const targetBeta = parseFloat(document.getElementById('beta').value);
+        const maxR = parseInt(document.getElementById('maxR').value);
+
+        let plans = [];
+        for (let r = 0; r <= maxR; r++) {
+            const T = getTestDuration(r, mtbf0, alpha);
+            const prob_accept_ha = jStat.poisson.cdf(r, T / mtbfa);
+            const power = 1 - prob_accept_ha;
+            
+            const solveMtbf = (targetProb) => {
+                const df = 2 * (r + 1);
+                const crit = jStat.chisquare.inv(1 - targetProb, df);
+                return (2 * T) / crit;
+            };
+
+            plans.push({ 
+                r, 
+                duration: T, 
+                power: power, 
+                displayPower: (1 - power), 
+                mtbf_target: solveMtbf(1 - targetBeta) 
+            });
+        }
+        return plans;
+    }
+
+    function renderDistributionPlot(plan) {
+        const mtbf0 = parseFloat(document.getElementById('mtbf0').value);
+        const mtbfa = parseFloat(document.getElementById('mtbfa').value);
+        const df = 2 * (plan.r + 1);
+        const Sc = (2 * plan.duration) / mtbf0; 
+
+        const xMax = jStat.chisquare.inv(0.99, df) * (mtbfa/mtbf0);
+        const x_vals = Array.from({length: 400}, (_, i) => (xMax * i) / 399);
+        const y_h0 = x_vals.map(x => jStat.chisquare.pdf(x, df));
+        const ratio = mtbf0 / mtbfa;
+        const y_ha = x_vals.map(x => jStat.chisquare.pdf(x * ratio, df) * ratio);
+
+        if (charts.dist) charts.dist.destroy();
+        charts.dist = new Chart(document.getElementById('distPlot'), {
+            type: 'line',
+            data: {
+                labels: x_vals,
+                datasets: [
+                    { label: 'H₀ (Min MTBF)', data: y_h0, borderColor: COLORS.h0, pointRadius: 0, fill: false, backgroundColor: "transparent" },
+                    { label: 'Hₐ (Alt MTBF)', data: y_ha, borderColor: COLORS.ha, pointRadius: 0, fill: false, backgroundColor: "transparent", borderDash: [5, 5] },
+                    { label: 'α (Type I Error)', data: x_vals.map((x, i) => x >= Sc ? y_h0[i] : null), backgroundColor: COLORS.alpha, fill: true, pointRadius: 0 },
+                    { label: 'β (Type II Error)', data: x_vals.map((x, i) => x < Sc ? y_ha[i] : null), backgroundColor: COLORS.beta, fill: true, pointRadius: 0 },
+                    { label: 'Power (1-β)', data: x_vals.map((x, i) => x >= Sc ? y_ha[i] : null), backgroundColor: COLORS.power, fill: true, pointRadius: 0 }
+                ]
+            },
+            options: {
+                scales: { x: { type: 'linear', title: { display: true, text: 'Chi-Square Test Statistic (2T/θ)' } } },
+                plugins: {
+                    annotation: {
+                        annotations: {
+                            line: { 
+                                type: 'line', 
+                                xMin: Sc, 
+                                xMax: Sc, 
+                                borderColor: 'red', 
+                                borderWidth: 2, 
+                                label: { 
+                                    display: true, 
+                                    content: `Critical Value: ${Sc.toFixed(2)}`, 
+                                    position: 'start',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                    color: 'red',
+                                    font: { weight: 'bold' }
+                                } 
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderOcCurve() {
+        if (selectedIndices.size === 0) return;
+
+        const mtbf0 = parseFloat(document.getElementById('mtbf0').value);
+        const mtbfa = parseFloat(document.getElementById('mtbfa').value);
+        const alpha = parseFloat(document.getElementById('alpha').value);
+        const targetPassProb = 1 - parseFloat(document.getElementById('beta').value);
+        
+        // Calculate max x-range first based on all selected plans
+        let maxMtbf = mtbf0 * 2.5; 
+        selectedIndices.forEach(idx => {
+            maxMtbf = Math.max(maxMtbf, testPlans[idx].mtbf_target * 1.5);
+        });
+
+        const datasets = [];
+        let colorIdx = 0;
+
+        selectedIndices.forEach(idx => {
+            const plan = testPlans[idx];
+            const points = [];
+            // Use the global maxMtbf for every dataset to ensure lines reach the edge
+            for (let m = 1; m <= maxMtbf; m += maxMtbf/150) {
+                points.push({ x: m, y: jStat.poisson.cdf(plan.r, plan.duration / m) });
+            }
+            datasets.push({
+                label: `r=${plan.r}, T=${plan.duration.toFixed(0)}`,
+                data: points,
+                borderColor: COLORS.palette[colorIdx % COLORS.palette.length],
+                backgroundColor: "transparent",
+                pointRadius: 0,
+                borderWidth: 2
+            });
+            colorIdx++;
+        });
+
+        if (charts.oc) charts.oc.destroy();
+        charts.oc = new Chart(document.getElementById('ocCurvePlot'), {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                scales: { 
+                    x: { 
+                        type: 'linear', 
+                        title: { display: true, text: 'True MTBF' },
+                        min: 0,
+                        max: maxMtbf
+                    },
+                    x2: {
+                        type: 'linear',
+                        position: 'top',
+                        grid: { drawOnChartArea: false },
+                        min: 0,
+                        max: maxMtbf,
+                        afterBuildTicks: (axis) => {
+                            const ticks = [];
+                            for(let i = 1; i * mtbf0 <= maxMtbf; i++) {
+                                ticks.push({value: i * mtbf0});
+                            }
+                            axis.ticks = ticks;
+                        },
+                        ticks: {
+                            color: '#666',
+                            callback: function(value) {
+                                let multiplier = Math.round(value / mtbf0);
+                                return multiplier === 1 ? 'H₀' : `${multiplier}H₀`;
+                            }
+                        }
+                    },
+                    y: { min: 0, max: 1, title: { display: true, text: 'Power\n(Prob. of Passing Demonstration Test)' } }
+                },
+                plugins: {
+                    annotation: {
+                        annotations: {
+                            p0: { type: 'point', xValue: mtbf0, yValue: alpha, backgroundColor: 'red', radius: 5 },
+                            lbl0: { type: 'label', xValue: mtbf0, yValue: alpha, content: `α = ${alpha.toFixed(2)}`, color: 'red', position: 'end' },
+                            hLinePower: { type: 'line', yMin: targetPassProb, yMax: targetPassProb, borderColor: 'black', borderDash: [6, 6], borderWidth: 1.5, label: { display: true, content: '1-β', position: 'start'} },
+                            vLine: { type: 'line', xMin: mtbfa, xMax: mtbfa, borderColor: 'black', borderDash: [6, 6], borderWidth: 1.5, label: { display: true, content: 'Hₐ', position: 'start'} }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    document.getElementById('calc1').addEventListener('click', () => {
+        testPlans = getTestPlans();
+        selectedIndices.clear();
+        const tbody = document.querySelector('#results_table tbody');
+        tbody.innerHTML = '';
+        
+        testPlans.forEach((p, i) => {
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                <td class="chk-cell"><input type="checkbox" class="plan-chk" data-idx="${i}"></td>
+                <td>${p.r}</td>
+                <td>${p.duration.toFixed(1)}</td>
+                <td>${p.displayPower.toFixed(3)}</td>
+                <td>${p.mtbf_target.toFixed(0)}</td>`;
+            
+            const chk = row.querySelector('.plan-chk');
+            chk.onchange = (e) => {
+                if (e.target.checked) {
+                    selectedIndices.add(i);
+                    row.classList.add('selected');
+                    document.getElementById('dist-card').classList.remove('hidden');
+                    renderDistributionPlot(p);
+                } else {
+                    selectedIndices.delete(i);
+                    row.classList.remove('selected');
+                }
+
+                if (selectedIndices.size > 0) {
+                    document.getElementById('oc-card').classList.remove('hidden');
+                    renderOcCurve();
+                } else {
+                    document.getElementById('dist-card').classList.add('hidden');
+                    document.getElementById('oc-card').classList.add('hidden');
+                }
+            };
+        });
+        document.getElementById('test-plan-card').classList.remove('hidden');
+    });
+
+    window.onload = () => document.getElementById('calc1').click();
+</script>
+</body>
+</html>

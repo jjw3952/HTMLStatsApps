@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factorial ANOVA Power Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; color: #212529; }
+        .container { display: flex; flex-wrap: wrap; max-width: 1450px; margin: 20px auto; gap: 20px; padding: 0 20px; }
+        .sidebar { flex: 1; min-width: 350px; padding: 20px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: fit-content; }
+        .main { flex: 3; min-width: 600px; display: flex; flex-direction: column; gap: 20px;}
+        .card { padding: 20px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .input-group { margin-bottom: 15px; }
+        .help-text { font-size: 0.85em; color: #6c757d; margin-top: 4px; font-style: italic; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 0.9em; color: #495057; }
+        input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px; }
+        select[multiple] { height: 120px; }
+        h3 { color: #0072B2; margin-top: 0; }
+        h3.author { font-weight: 400; line-height: 25%; color: #0072B2; font-size: 100%; margin-top: -10px; margin-bottom: 30px; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 1em; font-size: 0.9em; }
+        .table th, .table td { border: 1px solid #dee2e6; padding: 8px; text-align: center; }
+        .table th { background-color: #f2f2f2; }
+        
+        .range-container { position: relative; width: 100%; padding-bottom: 25px; }
+        .range-labels { display: flex; justify-content: space-between; padding: 0 10px; margin-top: -5px; }
+        .range-labels span { font-size: 0.85em; color: #666; }
+        .summary-grid { display: flex; gap: 20px; font-weight: bold; margin-bottom: 15px; color: #495057; border-bottom: 1px solid #eee; padding-bottom: 10px;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h3>Statistical Power for Factorial ANOVA</h3>
+        <h3 class="author">Created by Jake Warren</h3>
+        <h3>1. Define Your Design</h3>
+        <div class="input-group"><label>Significance Level (α)</label><input type="number" id="alpha" value="0.05" step="0.01" min="0.001" max="0.2"></div>
+        <div class="input-group"><label>Anticipated Delta
+          <div class="help-text">Corresponds to JMP's 'Anticipated Delta' assuming RMSE=1.</div></label>
+          <input type="number" id="delta" value="0.5" step="0.01" min="0.01"></div>
+        
+        <div class="input-group">
+            <label>Coding Method</label>
+            <select id="coding_method">
+                <option value="jmp" selected>JMP Coding</option>
+                <option value="conservative">Conservative Coding</option>
+            </select>
+            <div class="help-text">"JMP" maximizes effect across levels, "Conservative" focuses on the first two.</div>
+        </div>
+
+        <div class="input-group">
+            <label>Number of Factors</label>
+            <div class="range-container">
+                <input type="range" id="n_factors" value="2" min="1" max="6" step="1">
+                <div class="range-labels"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
+            </div>
+        </div>
+        <div id="factor_levels_container"></div>
+        <div class="input-group">
+            <label>Replications per Cell (n)</label>
+            <input type="number" id="replications" value="10" min="2">
+        </div>
+        <hr>
+        <h3>2. Specify Model</h3>
+        <div class="input-group"><label>Model Complexity</label><select id="model_complexity"></select></div>
+        <hr>
+        <h3>3. Power Curves & Distribution</h3>
+        <div class="input-group"><label>Distribution: Effect to Analyze</label><select id="effect_dist"></select></div>
+        <div class="input-group"><label>Power Curves: Select Effects (Multi)</label><select id="effect_curves" multiple></select></div>
+    </div>
+
+    <div class="main">
+        <div class="card">
+            <h3>Full Model Power Summary</h3>
+            <div id="design_summary" class="summary-grid"></div>
+            <div style="margin-top: 10px; text-align: right;">
+                <button id="downloadCSV" style="padding: 8px 12px; background-color: #0072B2; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                    Download Summary Table (.csv)
+                </button>
+            </div>
+            <table class="table" id="results_table">
+                <thead><tr><th>Effect</th><th>Num DF</th><th>Den DF</th><th>Cohen's f</th><th>Crit F</th><th>Power</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="card"><canvas id="distPlot"></canvas></div>
+        <div class="card"><canvas id="powerNCurve"></canvas></div>
+        <div class="card"><canvas id="powerFCurve"></canvas></div>
+
+        <div class="card">
+            <h3 style="text-align: center;">Key Concepts in ANOVA</h3>
+            <table class="table">
+                <thead>
+                    <tr><th rowspan="2">Actual State of the Factor</th><th colspan="2">Your Decision</th></tr>
+                    <tr><th>Conclude Factor is Significant</th><th>Conclude Factor is Not Significant</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>Factor has No Effect</strong></td><td style="background-color: #F8D7DA;">Type I Error (α)</td><td style="background-color: #D4EDDA;">Correct Decision (Confidence = 1-α)</td></tr>
+                    <tr><td><strong>Factor has a Real Effect</strong></td><td style="background-color: #D4EDDA;">Correct Decision (Power = 1-β)</td><td style="background-color: #FFF3CD;">Type II Error (β)</td></tr>
+                </tbody>
+            </table>
+            <br>
+            <h4>Confidence Level</h4>
+            <p>The probability of correctly concluding that a factor has no effect, when it truly doesn't. This is your protection against declaring a false discovery.</p>
+            <h4>Power</h4>
+            <p>The probability of correctly detecting that a factor has an effect, when it truly does. This is the sensitivity of your experiment to find a real result.</p>
+            <h4>Type I Error (α, alpha)</h4>
+            <p>The error of concluding that a factor is significant when it actually has no effect on the outcome. This is a 'false positive' or a spurious finding.</p>
+            <h4>Type II Error (β, beta)</h4>
+            <p>The error of failing to conclude that a factor is significant when it actually does have an effect. This is a 'false negative' or a missed opportunity to find a real discovery.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    Chart.register(window['chartjs-plugin-annotation']);
+
+    const ncf = {
+        pdf: (x, df1, df2, lam) => {
+            if (x <= 0) return 0;
+            let sum = 0;
+            for (let k = 0; k < 60; k++) {
+                let pois = (Math.pow(lam/2, k) * Math.exp(-lam/2)) / jStat.factorial(k);
+                sum += pois * (df1 / (df1 + 2*k)) * jStat.centralF.pdf(x * (df1/(df1+2*k)), df1+2*k, df2);
+            }
+            return sum;
+        },
+        cdf: (f, df1, df2, lam) => {
+            let sum = 0;
+            for (let k = 0; k < 60; k++) {
+                let pois = (Math.pow(lam/2, k) * Math.exp(-lam/2)) / jStat.factorial(k);
+                sum += pois * jStat.centralF.cdf((df1 * f) / (df1 + 2 * k), df1 + 2 * k, df2);
+            }
+            return sum;
+        }
+    };
+
+    const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#F0E442', '#56B4E9'];
+    const factorsInput = document.getElementById('n_factors');
+    const factorContainer = document.getElementById('factor_levels_container');
+    const modelComp = document.getElementById('model_complexity');
+    const distSelect = document.getElementById('effect_dist');
+    const curveSelect = document.getElementById('effect_curves');
+    let charts = {};
+
+    function init() {
+        const n = parseInt(factorsInput.value);
+        factorContainer.innerHTML = '';
+        for (let i = 1; i <= n; i++) {
+            const div = document.createElement('div');
+            div.className = 'input-group';
+            div.innerHTML = `<label>Levels for Factor ${String.fromCharCode(64+i)}</label><input type="number" class="f-level" value="2" min="2">`;
+            factorContainer.appendChild(div);
+        }
+        modelComp.innerHTML = '<option value="1">Main Effects Only</option>';
+        for(let i=2; i<n; i++) modelComp.innerHTML += `<option value="${i}">Up to ${i}-way interactions</option>`;
+        if(n > 1) modelComp.innerHTML += `<option value="${n}">Full Factorial</option>`;
+        updateSelectors();
+    }
+
+    function getCombos(n) {
+        let res = [[]];
+        for(let i=0; i<n; i++) {
+            let next = [];
+            res.forEach(c => { next.push([...c, 0]); next.push([...c, 1]); });
+            res = next;
+        }
+        return res.filter(c => c.some(v => v === 1)).sort((a,b) => {
+            let sA = a.reduce((s,v)=>s+v,0), sB = b.reduce((s,v)=>s+v,0);
+            return (sA !== sB) ? sA - sB : a.indexOf(1) - b.indexOf(1);
+        });
+    }
+
+    function updateSelectors() {
+        const comp = parseInt(modelComp.value);
+        const combos = getCombos(parseInt(factorsInput.value));
+        
+        // Filter combos by current model complexity
+        const availableCombos = combos.filter(c => c.reduce((s,v)=>s+v,0) <= comp);
+
+        [distSelect, curveSelect].forEach(s => s.innerHTML = '');
+        availableCombos.forEach((c) => {
+            const label = c.map((v, i) => v ? String.fromCharCode(65+i) : '').filter(v=>v).join('x');
+            const opt = new Option(label, JSON.stringify(c));
+            distSelect.add(opt.cloneNode(true));
+            curveSelect.add(opt);
+        });
+        
+        distSelect.value = JSON.stringify(availableCombos[0]); 
+        curveSelect.options[0].selected = true;
+        calculate();
+    }
+
+    function calculate() {
+        const levels = Array.from(document.querySelectorAll('.f-level')).map(i => parseInt(i.value));
+        const repl = parseInt(document.getElementById('replications').value);
+        const delta = parseFloat(document.getElementById('delta').value);
+        const alpha = parseFloat(document.getElementById('alpha').value);
+        const comp = parseInt(modelComp.value);
+        const coding_method = document.getElementById('coding_method').value;
+
+        let gv;
+        if (coding_method === 'conservative') {
+            gv = (k) => {
+                let v = new Array(k).fill(0);
+                if (k > 0) v[0] = 0.5;
+                if (k > 1) v[1] = -0.5;
+                return v;
+            };
+        } else { // 'jmp'
+            gv = (k) => {
+                let v = new Array(k).fill(0);
+                let h = Math.floor(k/2);
+                v.fill(0.5, 0, h);
+                v.fill(-0.5, h, h*2);
+                return v;
+            };
+        }
+        
+        const totalCells = levels.reduce((a,b) => a*b, 1);
+        const totalN = totalCells * repl;
+
+        let modelDF = 0;
+        const allTerms = getCombos(levels.length);
+        
+        // Calculate model DF based on complexity
+        allTerms.forEach(c => { if(c.reduce((s,v)=>s+v,0) <= comp) modelDF += c.reduce((acc, v, i) => v ? acc * (levels[i]-1) : acc, 1); });
+        const df_den = totalN - (modelDF + 1);
+
+        const tableBody = document.querySelector('#results_table tbody');
+        tableBody.innerHTML = '';
+        
+        const termData = allTerms.map(term => {
+            const termComplexity = term.reduce((s,v)=>s+v,0);
+            const df_num = term.reduce((acc, v, i) => v ? acc * (levels[i]-1) : acc, 1);
+            let rawGrid = term.map((u, i) => u ? gv(levels[i]) : [1]).reduce((a,b) => { let r=[]; a.forEach(v1=>b.forEach(v2=>r.push(v1*v2))); return r; });
+            
+            const current_range = Math.max(...rawGrid) - Math.min(...rawGrid);
+            let f = 0;
+            if (current_range > 0) {
+                // This line calculates Cohen's f assuming an RMSE of 1.
+                // It scales the raw grid by delta/range, then calculates the root mean square of the resulting values.
+                // This is equivalent to the standard deviation of the scaled cell means, since the mean is 0.
+                f = Math.sqrt(rawGrid.map(v => Math.pow(v*(delta/current_range),2)).reduce((a,b)=>a+b,0) / rawGrid.length);
+            }
+
+            const crit = jStat.centralF.inv(1 - alpha, df_num, df_den);
+            const pwr = 1 - ncf.cdf(crit, df_num, df_den, totalN * Math.pow(f, 2));
+
+            // Only add to table if it matches current model complexity
+            if (termComplexity <= comp) {
+                const row = tableBody.insertRow();
+                const label = term.map((v, i) => v ? String.fromCharCode(65+i) : '').filter(v=>v).join('x');
+                row.innerHTML = `<td>${label}</td><td>${df_num}</td><td>${df_den}</td><td>${f.toFixed(3)}</td><td>${crit.toFixed(3)}</td><td>${pwr.toFixed(3)}</td>`;
+            }
+            
+            return { term, label: term.map((v, i) => v ? String.fromCharCode(65+i) : '').filter(v=>v).join('x'), df_num, f, lambda: totalN*Math.pow(f,2), crit, pwr };
+        });
+
+        document.getElementById('design_summary').innerHTML = `<span>Total Cells: ${totalCells}</span><span>Total N: ${totalN}</span>`;
+        renderDist(termData.find(t => JSON.stringify(t.term) === distSelect.value), df_den, alpha);
+        renderCurves(termData, totalCells, alpha, df_den, repl);
+    }
+
+    function renderDist(d, dfd, alpha) {
+        if(!d) return;
+        const xMax = Math.max(d.crit * 2.5, 8);
+        const xVals = Array.from({length: 200}, (_, i) => i * xMax / 199);
+        const h0_y = xVals.map(x => jStat.centralF.pdf(x, d.df_num, dfd));
+        const h1_y = xVals.map(x => ncf.pdf(x, d.df_num, dfd, d.lambda));
+
+        if (charts.dist) charts.dist.destroy();
+        charts.dist = new Chart(document.getElementById('distPlot'), {
+            type: 'line',
+            data: {
+                labels: xVals,
+                datasets: [
+                    { label: 'H₀', data: h0_y, borderColor: 'black', fill: false, pointRadius: 0 },
+                    { label: 'H₁', data: h1_y, borderColor: 'blue', borderDash: [5,5], fill: false, pointRadius: 0 },
+                    { label: 'α (Type I Error)', data: xVals.map((x,i) => x >= d.crit ? h0_y[i] : null), backgroundColor: 'rgba(255,0,0,0.3)', fill: true, pointRadius: 0 },
+                    { label: 'Power (1-β)', data: xVals.map((x,i) => x >= d.crit ? h1_y[i] : null), backgroundColor: 'rgba(144,238,144,0.6)', fill: true, pointRadius: 0 },
+                    { label: 'β (Type II Error)', data: xVals.map((x,i) => x <= d.crit ? h1_y[i] : null), backgroundColor: 'rgba(255,243,205,0.7)', fill: true, pointRadius: 0 }
+                ]
+            },
+            options: {
+                plugins: {
+                    title: { display: true, text: `F-Distribution: ${d.label} (Power = ${d.pwr.toFixed(3)})` },
+                    annotation: { annotations: { line: { type: 'line', xMin: d.crit, xMax: d.crit, borderColor: 'red', borderWidth: 2, label: { display: true, content: `Critical F = ${d.crit.toFixed(3)}`, position: 'end' } } } }
+                },
+                scales: { x: { type: 'linear', title: { display: true, text: 'F-statistic' } }, y: { title: { display: true, text: 'Density' } } }
+            }
+        });
+    }
+
+    function renderCurves(data, cells, alpha, dfd, current_n) {
+        const selected = Array.from(curveSelect.selectedOptions).map(o => o.value);
+        const curveData = data.filter(d => selected.includes(JSON.stringify(d.term)));
+        const nSeq = Array.from({length: 49}, (_, i) => i + 2);
+        const fSeq = Array.from({length: 101}, (_, i) => i * 1.0 / 100);
+
+        const annotationsN = {};
+        const datasetsN = curveData.map((d, idx) => {
+            const color = colors[idx % colors.length];
+            annotationsN[`vN${idx}`] = { type: 'line', xMin: current_n, xMax: current_n, yMin: 0, yMax: d.pwr, borderColor: color, borderDash: [5,5] };
+            annotationsN[`hN${idx}`] = { type: 'line', yMin: d.pwr, yMax: d.pwr, xMin: 2, xMax: current_n, borderColor: color, borderDash: [5,5] };
+            return { label: d.label, data: nSeq.map(n => {
+                const tD = (cells * n) - (d.df_num + 1);
+                return tD < 1 ? null : 1 - ncf.cdf(jStat.centralF.inv(1-alpha, d.df_num, tD), d.df_num, tD, (cells*n) * Math.pow(d.f, 2));
+            }), borderColor: color, pointRadius: 3, showLine: true };
+        });
+
+        if (charts.n) charts.n.destroy();
+        charts.n = new Chart(document.getElementById('powerNCurve'), {
+            type: 'line', data: { labels: nSeq, datasets: datasetsN },
+            options: {
+                plugins: { title: { display: true, text: 'Power vs n' }, annotation: { annotations: annotationsN } },
+                scales: { y: { min: 0, max: 1, title: { display: true, text: 'Power' } }, x: { type: 'linear', title: { display: true, text: 'n (samples per cell)' }, ticks: { stepSize: 1 } } }
+            }
+        });
+
+        const annotationsF = {
+            alphaPoint: { type: 'point', xValue: 0, yValue: alpha, backgroundColor: 'red', radius: 5 },
+            alphaLbl: { type: 'label', xValue: 0.05, yValue: alpha + 0.05, content: `α = ${alpha}`, color: 'red', font: { weight: 'bold' } }
+        };
+        const datasetsF = curveData.map((d, idx) => {
+            const color = colors[idx % colors.length];
+            annotationsF[`vF${idx}`] = { type: 'line', xMin: d.f, xMax: d.f, yMin: 0, yMax: d.pwr, borderColor: color, borderDash: [5,5] };
+            annotationsF[`hF${idx}`] = { type: 'line', yMin: d.pwr, yMax: d.pwr, xMin: 0, xMax: d.f, borderColor: color, borderDash: [5,5] };
+            return { label: d.label, data: fSeq.map(f => 1 - ncf.cdf(d.crit, d.df_num, dfd, (cells * current_n) * Math.pow(f, 2))), borderColor: color, pointRadius: 0 };
+        });
+
+        if (charts.f) charts.f.destroy();
+        charts.f = new Chart(document.getElementById('powerFCurve'), {
+            type: 'line', data: { labels: fSeq, datasets: datasetsF },
+            options: {
+                plugins: { title: { display: true, text: "Power vs Cohen's f" }, annotation: { annotations: annotationsF } },
+                scales: { y: { min: 0, max: 1, title: { display: true, text: 'Power' } }, x: { type: 'linear', title: { display: true, text: "Cohen's f" } } }
+            }
+        });
+    }
+
+    factorsInput.addEventListener('input', init);
+    document.addEventListener('input', (e) => { 
+        if(e.target.id === 'model_complexity') updateSelectors();
+        else if(!['n_factors','effect_dist','effect_curves'].includes(e.target.id)) calculate(); 
+    });
+    distSelect.addEventListener('change', calculate);
+    curveSelect.addEventListener('change', calculate);
+    init();
+
+    document.getElementById('downloadCSV').addEventListener('click', function() {
+        const table = document.getElementById('results_table');
+        let csv = [];
+        
+        // Get all rows from the table
+        const rows = table.querySelectorAll('tr');
+        
+        for (let i = 0; i < rows.length; i++) {
+            let row = [], cols = rows[i].querySelectorAll('td, th');
+            
+            for (let j = 0; j < cols.length; j++) {
+                // Clean text and handle commas by wrapping in quotes
+                let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, "").replace(/(\s\s)/gm, " ");
+                data = data.replace(/"/g, '""'); 
+                row.push('"' + data + '"');
+            }
+            csv.push(row.join(','));
+        }
+
+        // Create CSV file and trigger download
+        const csvString = csv.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'factorial_anova_power_summary.csv');
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+</script>
+</body>
+</html>
